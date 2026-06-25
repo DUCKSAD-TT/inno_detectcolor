@@ -1,0 +1,6 @@
+opencv-python
+pyzmq
+pyFirmata2
+ultralytics
+customtkinter
+pillow
