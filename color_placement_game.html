@@ -1,0 +1,225 @@
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font-sans); color: var(--text-primary); }
+  .wrap { padding: 1rem; max-width: 680px; }
+  .slots { display: flex; gap: 12px; justify-content: center; margin-bottom: 1.5rem; flex-wrap: wrap; }
+  .slot {
+    width: 90px; height: 90px; border-radius: 12px;
+    border: 2px dashed var(--border-strong);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 12px; color: var(--text-muted); gap: 6px;
+    transition: all 0.3s ease; position: relative;
+  }
+  .slot.filled { border-style: solid; border-color: transparent; }
+  .slot .slot-num {
+    position: absolute; top: 4px; left: 8px;
+    font-size: 10px; font-weight: 500; color: var(--text-muted);
+  }
+  .slot .slot-label { font-size: 11px; font-weight: 500; }
+  .slot.empty-slot { border-color: var(--border-accent); background: var(--bg-accent); }
+  .slot.empty-slot .slot-label { color: var(--text-accent); }
+
+  .slot-red { background: #FCEBEB; border-color: #E24B4A; }
+  .slot-green { background: #EAF3DE; border-color: #639922; }
+  .slot-blue { background: #E6F1FB; border-color: #378ADD; }
+  .slot-yellow { background: #FAEEDA; border-color: #BA7517; }
+  .slot-red .slot-label { color: #A32D2D; }
+  .slot-green .slot-label { color: #3B6D11; }
+  .slot-blue .slot-label { color: #185FA5; }
+  .slot-yellow .slot-label { color: #854F0B; }
+
+  .color-dot { width: 36px; height: 36px; border-radius: 50%; }
+  .dot-red { background: #E24B4A; }
+  .dot-green { background: #639922; }
+  .dot-blue { background: #378ADD; }
+  .dot-yellow { background: #EF9F27; }
+
+  .terminal {
+    background: #1a1a1a; color: #00ff88; border-radius: 12px;
+    padding: 1rem; font-family: var(--font-mono); font-size: 12px;
+    min-height: 180px; max-height: 220px; overflow-y: auto;
+    margin-bottom: 1rem; line-height: 1.7;
+  }
+  .terminal .t-dim { color: #555; }
+  .terminal .t-warn { color: #ffaa00; }
+  .terminal .t-info { color: #00ccff; }
+  .terminal .t-err { color: #ff4444; }
+  .terminal .t-ok { color: #00ff88; }
+
+  .menu { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1rem; }
+  .btn {
+    padding: 8px 16px; border-radius: var(--radius);
+    border: 0.5px solid var(--border-strong);
+    background: var(--surface-2); color: var(--text-primary);
+    font-size: 13px; cursor: pointer; font-family: var(--font-sans);
+    display: flex; align-items: center; gap: 6px; font-weight: 400;
+    transition: background 0.15s, transform 0.1s;
+  }
+  .btn:hover { background: var(--surface-1); }
+  .btn:active { transform: scale(0.97); }
+  .btn.primary { background: var(--fill-accent); color: var(--on-accent); border-color: transparent; }
+  .btn.primary:hover { background: var(--fill-accent-hover); }
+  .btn.danger { background: var(--bg-danger); color: var(--text-danger); border-color: var(--border-danger); }
+
+  .stats { display: flex; gap: 8px; margin-bottom: 1rem; flex-wrap: wrap; }
+  .stat-card {
+    flex: 1; min-width: 80px; background: var(--surface-1);
+    border-radius: var(--radius); padding: 8px 12px; text-align: center;
+  }
+  .stat-label { font-size: 11px; color: var(--text-muted); margin-bottom: 2px; }
+  .stat-val { font-size: 20px; font-weight: 500; }
+
+  .history-tag {
+    display: inline-block; padding: 2px 8px; border-radius: 99px;
+    font-size: 11px; margin: 2px;
+  }
+  .ht-red { background: #FCEBEB; color: #A32D2D; }
+  .ht-green { background: #EAF3DE; color: #3B6D11; }
+  .ht-blue { background: #E6F1FB; color: #185FA5; }
+  .ht-yellow { background: #FAEEDA; color: #854F0B; }
+  .ht-empty { background: var(--bg-accent); color: var(--text-accent); }
+
+  h2 { font-size: 13px; font-weight: 500; color: var(--text-secondary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+</style>
+
+<div class="wrap">
+  <h2 aria-label="hidden"><i class="ti ti-palette" aria-hidden="true"></i> color placement game</h2>
+
+  <div class="stats">
+    <div class="stat-card"><div class="stat-label">รอบที่</div><div class="stat-val" id="round">0</div></div>
+    <div class="stat-card"><div class="stat-label">สุ่มครั้งที่</div><div class="stat-val" id="total">0</div></div>
+    <div class="stat-card"><div class="stat-label">จุดว่าง</div><div class="stat-val" id="emptyPos">-</div></div>
+    <div class="stat-card"><div class="stat-label">สถานะ</div><div class="stat-val" id="status" style="font-size:13px;padding-top:4px">รอเริ่ม</div></div>
+  </div>
+
+  <h2><i class="ti ti-layout-grid" aria-hidden="true"></i> จุดวาง 5 จุด</h2>
+  <div class="slots" id="slots">
+    <div class="slot" id="s0"><span class="slot-num">1</span><div class="slot-label">ว่าง</div></div>
+    <div class="slot" id="s1"><span class="slot-num">2</span><div class="slot-label">ว่าง</div></div>
+    <div class="slot" id="s2"><span class="slot-num">3</span><div class="slot-label">ว่าง</div></div>
+    <div class="slot" id="s3"><span class="slot-num">4</span><div class="slot-label">ว่าง</div></div>
+    <div class="slot" id="s4"><span class="slot-num">5</span><div class="slot-label">ว่าง</div></div>
+  </div>
+
+  <h2><i class="ti ti-terminal" aria-hidden="true"></i> terminal</h2>
+  <div class="terminal" id="terminal">
+    <span class="t-dim">$ </span><span class="t-info">color-placement v1.0</span><br>
+    <span class="t-dim">──────────────────────────</span><br>
+    <span class="t-dim">กด [สุ่มสี] เพื่อเริ่มต้น</span><br>
+  </div>
+
+  <div class="menu">
+    <button class="btn primary" onclick="doRandom()"><i class="ti ti-dice" aria-hidden="true"></i> สุ่มสี</button>
+    <button class="btn" onclick="doAuto()"><i class="ti ti-player-play" aria-hidden="true"></i> Auto x5</button>
+    <button class="btn" onclick="doReset()"><i class="ti ti-refresh" aria-hidden="true"></i> รีเซ็ต</button>
+    <button class="btn" onclick="doShowHistory()"><i class="ti ti-history" aria-hidden="true"></i> ประวัติ</button>
+    <button class="btn danger" onclick="doClear()"><i class="ti ti-trash" aria-hidden="true"></i> ล้าง Terminal</button>
+  </div>
+</div>
+
+<script>
+const COLORS = ['red','green','blue','yellow'];
+const COLOR_TH = { red:'แดง', green:'เขียว', blue:'น้ำเงิน', yellow:'เหลือง' };
+const COLOR_EN = { red:'RED', green:'GREEN', blue:'BLUE', yellow:'YELLOW' };
+
+let round = 0, totalRolls = 0;
+let history = [];
+let autoTimer = null;
+
+function log(msg, cls='t-ok') {
+  const t = document.getElementById('terminal');
+  t.innerHTML += `<span class="${cls}">${msg}</span><br>`;
+  t.scrollTop = t.scrollHeight;
+}
+
+function doRandom() {
+  round++; totalRolls++;
+  document.getElementById('round').textContent = round;
+  document.getElementById('total').textContent = totalRolls;
+  document.getElementById('status').textContent = 'กำลังสุ่ม';
+
+  const positions = [0,1,2,3,4];
+  const emptyPos = Math.floor(Math.random() * 5);
+  const remaining = positions.filter(p => p !== emptyPos);
+
+  const shuffled = [...COLORS].sort(() => Math.random() - 0.5);
+
+  const result = new Array(5).fill(null);
+  remaining.forEach((pos, i) => { result[pos] = shuffled[i]; });
+
+  for (let i = 0; i < 5; i++) {
+    const el = document.getElementById('s' + i);
+    el.className = 'slot';
+    const numEl = `<span class="slot-num">${i+1}</span>`;
+    if (result[i] === null) {
+      el.classList.add('empty-slot');
+      el.innerHTML = numEl + `<i class="ti ti-x" style="font-size:24px" aria-hidden="true"></i><div class="slot-label">ว่าง!</div>`;
+    } else {
+      el.classList.add('filled','slot-'+result[i]);
+      el.innerHTML = numEl + `<div class="color-dot dot-${result[i]}"></div><div class="slot-label">${COLOR_TH[result[i]]}</div>`;
+    }
+  }
+
+  document.getElementById('emptyPos').textContent = `จุด ${emptyPos+1}`;
+  document.getElementById('status').textContent = 'สุ่มแล้ว ✓';
+
+  const entry = { round, emptyPos: emptyPos+1, result };
+  history.push(entry);
+
+  log(`── รอบที่ ${round} ──────────────────`,'t-dim');
+  for (let i = 0; i < 5; i++) {
+    if (result[i] === null) {
+      log(`  จุด ${i+1}: [ไม่มีกล่องสี]`, 't-warn');
+    } else {
+      const col = result[i];
+      const clsMap = {red:'t-err', green:'t-ok', blue:'t-info', yellow:'t-warn'};
+      log(`  จุด ${i+1}: ${COLOR_EN[col]} (${COLOR_TH[col]})`, clsMap[col]);
+    }
+  }
+  log(`  → จุดว่าง: จุดที่ ${emptyPos+1}`, 't-info');
+}
+
+function doAuto() {
+  if (autoTimer) return;
+  let count = 0;
+  log('▶ Auto mode: สุ่ม 5 ครั้ง...', 't-info');
+  autoTimer = setInterval(() => {
+    doRandom();
+    count++;
+    if (count >= 5) { clearInterval(autoTimer); autoTimer = null; log('■ Auto mode สิ้นสุด', 't-dim'); }
+  }, 700);
+}
+
+function doReset() {
+  round = 0; totalRolls = 0; history = [];
+  if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+  document.getElementById('round').textContent = 0;
+  document.getElementById('total').textContent = 0;
+  document.getElementById('emptyPos').textContent = '-';
+  document.getElementById('status').textContent = 'รอเริ่ม';
+  for (let i = 0; i < 5; i++) {
+    const el = document.getElementById('s'+i);
+    el.className = 'slot';
+    el.innerHTML = `<span class="slot-num">${i+1}</span><div class="slot-label">ว่าง</div>`;
+  }
+  log('═══════════════════════════', 't-dim');
+  log('รีเซ็ตทั้งหมดแล้ว', 't-warn');
+  log('$ color-placement v1.0', 't-info');
+}
+
+function doShowHistory() {
+  if (history.length === 0) { log('ยังไม่มีประวัติ', 't-warn'); return; }
+  log(`── ประวัติทั้งหมด ${history.length} รอบ ──`, 't-dim');
+  history.slice(-5).forEach(h => {
+    const row = h.result.map((c,i) => c === null ? `[ว่าง]` : COLOR_TH[c]).join(' │ ');
+    log(`  รอบ ${h.round}: ${row}  (ว่าง=จุด${h.emptyPos})`, 't-info');
+  });
+  if (history.length > 5) log(`  ... และอีก ${history.length - 5} รอบก่อนหน้า`, 't-dim');
+}
+
+function doClear() {
+  document.getElementById('terminal').innerHTML =
+    '<span class="t-dim">$ </span><span class="t-info">terminal cleared</span><br>';
+}
+</script>
