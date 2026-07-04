@@ -1,21 +1,24 @@
-PS D:\hoho> python .\main.py
-Traceback (most recent call last):
-  File "D:\hoho\main.py", line 27, in __init__
-    self.log("เชื่อมต่อ Serial Port สำเร็จ")
-  File "D:\hoho\main.py", line 70, in log
-    self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
-    ^^^^^^^^^^^^^
-AttributeError: 'RobotApp' object has no attribute 'log_text'
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Robot Arm Sorter Controller")
+        
+        # 1. กำหนดตัวแปรสถานะต่างๆ ก่อน
+        self.points = []
+        self.is_selecting = False
+        self.running_sequence = False
+        self.stop_requested = False
+        
+        # 2. สร้างหน้าต่าง GUI และกล่อง Log ให้เสร็จก่อน
+        self.setup_gui()
+        
+        # 3. ทำการเชื่อมต่อ Serial (ตอนนี้มีกล่อง log_text ให้พิมพ์แล้ว)
+        try:
+            self.serial_conn = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
+            self.log("เชื่อมต่อ Serial Port สำเร็จ")
+        except Exception as e:
+            self.serial_conn = None
+            self.log(f"ข้อผิดพลาด Serial (หรือไม่ได้เสียบบอร์ด): {e}")
 
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "D:\hoho\main.py", line 257, in <module>
-    app = RobotApp(root)
-          ^^^^^^^^^^^^^^
-  File "D:\hoho\main.py", line 30, in __init__
-    self.log(f"ข้อผิดพลาด Serial: {e}")
-  File "D:\hoho\main.py", line 70, in log
-    self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
-    ^^^^^^^^^^^^^
-AttributeError: 'RobotApp' object has no attribute 'log_text'
+        # 4. เปิดกล้องและเริ่มอัปเดตภาพ
+        self.cap = cv2.VideoCapture(CAMERA_ID)
+        self.update_frame()
