@@ -1,21 +1,262 @@
-PS D:\hoho> python .\main.py
-Traceback (most recent call last):
-  File "D:\hoho\main.py", line 27, in __init__
-    self.log("เชื่อมต่อ Serial Port สำเร็จ")
-  File "D:\hoho\main.py", line 70, in log
-    self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
-    ^^^^^^^^^^^^^
-AttributeError: 'RobotApp' object has no attribute 'log_text'
+import cv2
+import numpy as np
+import serial
+import csv
+import time
+import threading
+import tkinter as tk
+from tkinter import scrolledtext
+from PIL import Image, ImageTk
 
-During handling of the above exception, another exception occurred:
+# =================ตั้งค่าระบบ=================
+SERIAL_PORT = 'COM7' # <--- พอร์ต Arduino ของคุณ
+BAUD_RATE = 9600
+CAMERA_ID = 1        # <--- หากภาพไม่ขึ้น ลองเปลี่ยนเป็น 0 หรือ 2 ดูครับ
+# สี: แดง=1, น้ำเงิน=2, เขียว=3, เหลือง=4
+# ==========================================
 
-Traceback (most recent call last):
-  File "D:\hoho\main.py", line 257, in <module>
+class RobotApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Robot Arm Sorter Controller")
+
+        # 1. กำหนดตัวแปรสถานะต่างๆ ก่อน
+        self.points = []
+        self.is_selecting = False
+        self.running_sequence = False
+        self.stop_requested = False
+
+        # 2. สร้างหน้าต่าง GUI และกล่อง Log ให้เสร็จก่อน
+        self.setup_gui()
+
+        # 3. ทำการเชื่อมต่อ Serial (ตอนนี้มีกล่อง log_text แล้ว จะไม่ติด Error แน่นอน)
+        try:
+            self.serial_conn = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
+            self.log(f"เชื่อมต่อ Serial Port ({SERIAL_PORT}) สำเร็จ")
+        except Exception as e:
+            self.serial_conn = None
+            self.log(f"⚠️ ข้อผิดพลาด Serial (หรือไม่ได้เสียบบอร์ด): {e}")
+
+        # 4. เปิดกล้องพร้อมระบบป้องกันโปรแกรมค้าง
+        self.log(f"กำลังเปิดกล้อง ID: {CAMERA_ID}...")
+        self.cap = cv2.VideoCapture(CAMERA_ID)
+        
+        if not self.cap.isOpened():
+            self.log(f"⚠️ ข้อผิดพลาด: ไม่สามารถเปิดกล้อง ID {CAMERA_ID} ได้! กรุณาตรวจสอบสายหรือเปลี่ยน CAMERA_ID")
+        
+        self.update_frame()
+
+    def setup_gui(self):
+        # Frame ซ้ายสำหรับกล้อง
+        self.video_frame = tk.Label(self.root, text="[ กำลังโหลดภาพจากกล้อง... ]", bg="gray", width=50, height=20)
+        self.video_frame.grid(row=0, column=0, rowspan=10, padx=10, pady=10)
+        self.video_frame.bind("<Button-1>", self.on_mouse_click)
+
+        # เมนูสั่งการฝั่งขวา
+        tk.Button(self.root, text="1. ระบุตำแหน่งสินค้า 5 จุด", command=self.start_selection, bg="lightblue").grid(row=0, column=1, sticky="ew")
+
+        # ปุ่มทดสอบตำแหน่ง (1-5)
+        test_frame = tk.Frame(self.root)
+        test_frame.grid(row=1, column=1, sticky="ew")
+        tk.Label(test_frame, text="ทดสอบตำแหน่ง:").pack(side=tk.LEFT)
+        for i in range(1, 6):
+            tk.Button(test_frame, text=f"{i}", command=lambda idx=i: self.test_position(idx)).pack(side=tk.LEFT, padx=2)
+
+        # ปุ่มทำงานหลัก
+        tk.Button(self.root, text="▶ เริ่มการทำงาน (Auto Mode)", command=self.start_auto_mode, bg="lightgreen", font=("Arial", 12, "bold")).grid(row=2, column=1, sticky="ew", pady=5)
+
+        # ปุ่มหยุดการทำงาน
+        tk.Button(self.root, text="🛑 หยุดและกลับท่าเริ่ม (Home)", command=self.stop_and_home, bg="salmon", font=("Arial", 12, "bold")).grid(row=3, column=1, sticky="ew", pady=5)
+
+        # Log Window
+        self.log_text = scrolledtext.ScrolledText(self.root, width=50, height=15)
+        self.log_text.grid(row=4, column=1, rowspan=6, padx=10, pady=10)
+
+    def log(self, message):
+        timestamp = time.strftime("%H:%M:%S")
+        self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
+        self.log_text.see(tk.END)
+
+    def start_selection(self):
+        self.points = []
+        self.is_selecting = True
+        self.log("กรุณาคลิกเลือกตำแหน่งบนภาพ 5 จุด (จุดที่ 1-5)")
+
+    def on_mouse_click(self, event):
+        if self.is_selecting and len(self.points) < 5:
+            self.points.append((event.x, event.y))
+            self.log(f"บันทึกจุดที่ {len(self.points)}: ({event.x}, {event.y})")
+            if len(self.points) == 5:
+                self.is_selecting = False
+                self.log("บันทึกครบ 5 ตำแหน่งแล้ว")
+
+    def update_frame(self):
+        if self.cap.isOpened():
+            ret, frame = self.cap.read()
+            if ret:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+                # วาดจุดที่เลือกไว้
+                for i, p in enumerate(self.points):
+                    cv2.circle(frame, p, 5, (0, 255, 0), -1)
+                    cv2.putText(frame, str(i+1), (p[0]+10, p[1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
+
+                img = Image.fromarray(frame)
+                imgtk = ImageTk.PhotoImage(image=img)
+                self.video_frame.imgtk = imgtk
+                self.video_frame.configure(image=imgtk)
+
+        self.root.after(30, self.update_frame)
+
+    def detect_color_at_point(self, frame_hsv, x, y):
+        roi = frame_hsv[max(0, y-10):min(frame_hsv.shape[0], y+10), 
+                        max(0, x-10):min(frame_hsv.shape[1], x+10)]
+
+        # กำหนดช่วงสี HSV
+        color_ranges = {
+            1: [(0, 100, 100), (10, 255, 255), (160, 100, 100), (180, 255, 255)], # แดง
+            2: [(100, 150, 0), (140, 255, 255)], # น้ำเงิน
+            3: [(40, 40, 40), (80, 255, 255)],   # เขียว
+            4: [(20, 100, 100), (35, 255, 255)]  # เหลือง
+        }
+
+        max_pixels = 0
+        detected_color = 0 
+
+        for color_id, bounds in color_ranges.items():
+            if color_id == 1:
+                mask1 = cv2.inRange(roi, np.array(bounds[0]), np.array(bounds[1]))
+                mask2 = cv2.inRange(roi, np.array(bounds[2]), np.array(bounds[3]))
+                mask = mask1 | mask2
+            else:
+                mask = cv2.inRange(roi, np.array(bounds[0]), np.array(bounds[1]))
+
+            count = cv2.countNonZero(mask)
+            if count > max_pixels and count > 50: 
+                max_pixels = count
+                detected_color = color_id
+
+        color_names = {0: "ไม่มีสินค้า", 1: "แดง", 2: "น้ำเงิน", 3: "เขียว", 4: "เหลือง"}
+        return detected_color, color_names[detected_color]
+
+    def send_to_arduino(self, s1, s2, s3, s4):
+        if self.serial_conn:
+            command = f"<{int(s1)},{int(s2)},{int(s3)},{int(s4)}>"
+            self.serial_conn.write(command.encode('utf-8'))
+            self.log(f"ส่งองศา Servo -> Base:{int(s1)} | Shoulder:{int(s2)} | Elbow:{int(s3)} | Gripper:{int(s4)}")
+
+    def execute_csv(self, filename, is_last_item=False):
+        try:
+            with open(filename, 'r') as file:
+                reader = csv.reader(file)
+                prev_s4 = None
+
+                for row in reader:
+                    if self.stop_requested: break
+                    if len(row) < 5: continue
+
+                    delay, s1, s2, s3, s4 = map(float, row)
+
+                    if is_last_item and prev_s4 is not None:
+                        if s4 < prev_s4:
+                            self.log(f"วางสินค้าชิ้นสุดท้ายแล้ว (S4 ลดลงจาก {prev_s4} -> {s4}) - หยุดทำงานทันที")
+                            self.send_to_arduino(s1, s2, s3, s4) 
+                            return True 
+
+                    self.send_to_arduino(s1, s2, s3, s4)
+                    time.sleep(delay / 1000.0)
+                    prev_s4 = s4
+
+            return False
+        except FileNotFoundError:
+            self.log(f"⚠️ ไม่พบไฟล์ {filename}")
+            return False
+
+    def test_position(self, pos_idx):
+        if len(self.points) < 5:
+            self.log("กรุณาระบุตำแหน่งให้ครบ 5 จุดก่อนทดสอบ")
+            return
+
+        def run_test():
+            ret, frame = self.cap.read()
+            if not ret: 
+                self.log("⚠️ ไม่สามารถดึงภาพจากกล้องเพื่อทดสอบได้")
+                return
+            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            x, y = self.points[pos_idx-1]
+
+            color_id, color_name = self.detect_color_at_point(hsv, x, y)
+            self.log(f"ทดสอบจุดที่ {pos_idx}: พบ {color_name}")
+
+            if color_id != 0:
+                filename = f"record-{pos_idx}{color_id}.csv"
+                self.log(f"กำลังเล่นท่าทางจาก {filename}...")
+                self.execute_csv(filename)
+                self.log("จบทดสอบ")
+
+        threading.Thread(target=run_test, daemon=True).start()
+
+    def start_auto_mode(self):
+        if len(self.points) < 5:
+            self.log("กรุณาระบุตำแหน่งให้ครบ 5 จุดก่อนเริ่มทำงาน")
+            return
+        if self.running_sequence: return
+
+        self.running_sequence = True
+        self.stop_requested = False
+        threading.Thread(target=self.auto_sequence, daemon=True).start()
+
+    def auto_sequence(self):
+        start_time = time.time()
+        self.log("--- เริ่มกระบวนการตรวจสอบและจัดเก็บ ---")
+
+        ret, frame = self.cap.read()
+        if not ret:
+            self.log("⚠️ ไม่สามารถอ่านภาพจากกล้องได้")
+            self.running_sequence = False
+            return
+
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        tasks = [] 
+
+        for i, (x, y) in enumerate(self.points):
+            pos_idx = i + 1
+            color_id, color_name = self.detect_color_at_point(hsv, x, y)
+            if color_id != 0:
+                filename = f"record-{pos_idx}{color_id}.csv"
+                tasks.append({"pos": pos_idx, "color": color_name, "file": filename})
+                self.log(f"สแกนเจอ: ตำแหน่ง {pos_idx} สินค้าสี {color_name} -> {filename}")
+            else:
+                self.log(f"สแกน: ตำแหน่ง {pos_idx} ว่างเปล่า")
+
+        if not tasks:
+            self.log("ไม่พบสินค้าบนสายพานเลย")
+            self.running_sequence = False
+            return
+
+        for idx, task in enumerate(tasks):
+            if self.stop_requested:
+                self.log("หยุดการทำงานฉุกเฉิน!")
+                break
+
+            is_last = (idx == len(tasks) - 1)
+            self.log(f"กำลังจัดเก็บชิ้นที่ {idx+1}/{len(tasks)} (ตำแหน่ง {task['pos']} สี {task['color']})")
+
+            stopped_early = self.execute_csv(task['file'], is_last_item=is_last)
+
+            if stopped_early:
+                break 
+
+        total_time = time.time() - start_time
+        self.log(f"--- จบการทำงานทั้งหมด ใช้เวลา {total_time:.2f} วินาที ---")
+        self.running_sequence = False
+
+    def stop_and_home(self):
+        self.stop_requested = True
+        self.log("กำลังหยุดการทำงาน และกลับท่า Home...")
+        self.send_to_arduino(90, 90, 90, 90) 
+
+if __name__ == "__main__":
+    root = tk.Tk()
     app = RobotApp(root)
-          ^^^^^^^^^^^^^^
-  File "D:\hoho\main.py", line 30, in __init__
-    self.log(f"ข้อผิดพลาด Serial: {e}")
-  File "D:\hoho\main.py", line 70, in log
-    self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
-    ^^^^^^^^^^^^^
-AttributeError: 'RobotApp' object has no attribute 'log_text'
+    root.mainloop()
