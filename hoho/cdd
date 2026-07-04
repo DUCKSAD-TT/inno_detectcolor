@@ -1,76 +1,21 @@
+PS D:\hoho> python .\main.py
+Traceback (most recent call last):
+  File "D:\hoho\main.py", line 27, in __init__
+    self.log("เชื่อมต่อ Serial Port สำเร็จ")
+  File "D:\hoho\main.py", line 70, in log
+    self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
+    ^^^^^^^^^^^^^
+AttributeError: 'RobotApp' object has no attribute 'log_text'
 
-#include <Servo.h>
+During handling of the above exception, another exception occurred:
 
-Servo servo1; // Base
-Servo servo2; // Shoulder
-Servo servo3; // Elbow
-Servo servo4; // Gripper
-
-const byte numChars = 32;
-char receivedChars[numChars];
-boolean newData = false;
-
-void setup() {
-    Serial.begin(9600);
-    servo1.attach(3); // เปลี่ยน Pin ตามที่คุณต่อจริง
-    servo2.attach(5);
-    servo3.attach(6);
-    servo4.attach(9);
-    
-    // ท่าเริ่มต้น (Home)
-    servo1.write(90);
-    servo2.write(90);
-    servo3.write(90);
-    servo4.write(90);
-}
-
-void loop() {
-    recvWithStartEndMarkers();
-    if (newData == true) {
-        parseData();
-        newData = false;
-    }
-}
-
-void recvWithStartEndMarkers() {
-    static boolean recvInProgress = false;
-    static byte ndx = 0;
-    char startMarker = '<';
-    char endMarker = '>';
-    char rc;
-
-    while (Serial.available() > 0 && newData == false) {
-        rc = Serial.read();
-        if (recvInProgress == true) {
-            if (rc != endMarker) {
-                receivedChars[ndx] = rc;
-                ndx++;
-                if (ndx >= numChars) { ndx = numChars - 1; }
-            } else {
-                receivedChars[ndx] = '\0';
-                recvInProgress = false;
-                ndx = 0;
-                newData = true;
-            }
-        } else if (rc == startMarker) {
-            recvInProgress = true;
-        }
-    }
-}
-
-void parseData() {
-    char * strtokIndx; 
-    strtokIndx = strtok(receivedChars, ",");
-    int s1 = atoi(strtokIndx); 
-    strtokIndx = strtok(NULL, ",");
-    int s2 = atoi(strtokIndx); 
-    strtokIndx = strtok(NULL, ",");
-    int s3 = atoi(strtokIndx); 
-    strtokIndx = strtok(NULL, ",");
-    int s4 = atoi(strtokIndx); 
-
-    servo1.write(s1);
-    servo2.write(s2);
-    servo3.write(s3);
-    servo4.write(s4);
-}
+Traceback (most recent call last):
+  File "D:\hoho\main.py", line 257, in <module>
+    app = RobotApp(root)
+          ^^^^^^^^^^^^^^
+  File "D:\hoho\main.py", line 30, in __init__
+    self.log(f"ข้อผิดพลาด Serial: {e}")
+  File "D:\hoho\main.py", line 70, in log
+    self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
+    ^^^^^^^^^^^^^
+AttributeError: 'RobotApp' object has no attribute 'log_text'
